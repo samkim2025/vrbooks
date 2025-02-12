@@ -4,10 +4,28 @@ import numpy as np
 from diffusers import StableDiffusionPipeline
 import torch.nn.functional as F
 from PIL import Image
-import cv2
+import io
+import zipfile
 
 # ------------------------------------------------------------------------------
-# CACHE THE MODELS FOR EFFICIENT REUSE
+# SECTION 1: PAGE CONFIGURATION & SESSION STATE INITIALIZATION
+# ------------------------------------------------------------------------------
+
+st.set_page_config(page_title="VR Storyteller", layout="wide")
+
+# Initialize session state variables if not already set
+if 'project_title' not in st.session_state:
+    st.session_state.project_title = ""
+if 'pages' not in st.session_state:
+    # Each page is a dict with: 'prompt' (str), 'scene' (Image), 'approved' (bool)
+    st.session_state.pages = []
+if 'current_page_index' not in st.session_state:
+    st.session_state.current_page_index = 0
+if 'project_confirmed' not in st.session_state:
+    st.session_state.project_confirmed = False
+
+# ------------------------------------------------------------------------------
+# SECTION 2: MODEL LOADING FUNCTIONS (CACHED)
 # ------------------------------------------------------------------------------
 
 @st.cache_resource
@@ -19,7 +37,7 @@ def load_sd_pipeline():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
     pipe = StableDiffusionPipeline.from_pretrained(
-        "CompVis/stable-diffusion-v1-4", 
+        "CompVis/stable-diffusion-v1-4",
         torch_dtype=dtype
     )
     pipe = pipe.to(device)
@@ -40,12 +58,12 @@ def load_midas():
     return midas, transform
 
 # ------------------------------------------------------------------------------
-# IMPLEMENTATION OF generate_scene(prompt)
+# SECTION 3: ACTUAL SCENE GENERATION FUNCTION
 # ------------------------------------------------------------------------------
 
 def generate_scene(prompt: str) -> Image.Image:
     """
-    Generate a pseudo-3D scene from a text prompt.
+    Generate a pseudo-3D scene from a text prompt using AI.
     
     Steps:
       1. Generate a 2D image from text using Stable Diffusion.
@@ -54,68 +72,10 @@ def generate_scene(prompt: str) -> Image.Image:
          to simulate a 3D perspective shift.
     
     Returns:
-      A PIL Image representing the "3D" scene.
+      A PIL Image representing the generated "3D" scene.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Show spinner while loading heavy AI models.
     with st.spinner("Loading AI models, please wait..."):
         pipe = load_sd_pipeline()
-        midas, transform = load_midas()
-
-    # Step 1: Generate a 2D image from the text prompt.
-    with torch.autocast(device):
-        result = pipe(prompt)
-    image = result.images[0]
-    image = image.convert("RGB")
-    image_np = np.array(image)
-
-    # Step 2: Estimate the depth map using MiDaS.
-    input_batch = transform(image).to(device)
-    with torch.no_grad():
-        prediction = midas(input_batch)
-        # Resize depth map to the same size as the image.
-        prediction = F.interpolate(
-            prediction.unsqueeze(1),
-            size=image_np.shape[:2],
-            mode="bicubic",
-            align_corners=False
-        ).squeeze()
-    depth_map = prediction.cpu().numpy()
-
-    # Normalize the depth map to the range [0, 255].
-    depth_min, depth_max = depth_map.min(), depth_map.max()
-    depth_map_norm = ((depth_map - depth_min) / (depth_max - depth_min) * 255).astype(np.uint8)
-
-    # Step 3: Create a simple warp effect.
-    # For each row in the image, compute a horizontal offset based on the average depth.
-    height, width, _ = image_np.shape
-    warped_image = np.zeros_like(image_np)
-    for i in range(height):
-        # Compute offset: deeper areas (brighter in depth_map_norm) get a larger offset.
-        row_depth = depth_map_norm[i, :]
-        offset = int(np.mean(row_depth) / 255 * 20)  # maximum offset of ~20 pixels
-        if offset > 0:
-            warped_image[i, offset:] = image_np[i, :-offset]
-            warped_image[i, :offset] = image_np[i, 0:1]  # fill left gap with first column
-        else:
-            warped_image[i] = image_np[i]
-
-    # Convert the warped image back to a PIL Image.
-    warped_image_pil = Image.fromarray(warped_image)
-    return warped_image_pil
-
-# ------------------------------------------------------------------------------
-# MAIN APP: Simple Test Interface
-# ------------------------------------------------------------------------------
-
-def main():
-    st.title("VR Storyteller: Generate a Pseudo-3D Scene")
-    prompt = st.text_input("Enter your scene description", "A futuristic city at sunset")
-    if st.button("Generate Scene"):
-        with st.spinner("Generating scene..."):
-            scene_img = generate_scene(prompt)
-        st.image(scene_img, caption="Generated Scene", use_column_width=True)
-
-if __name__ == "__main__":
-    main()
+        midas, trans
