@@ -58,12 +58,12 @@ def generate_scene(prompt: str) -> Image.Image:
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
+    # Show spinner while loading heavy AI models.
     with st.spinner("Loading AI models, please wait..."):
         pipe = load_sd_pipeline()
         midas, transform = load_midas()
 
     # Step 1: Generate a 2D image from the text prompt.
-    # (Note: using autocast for performance on GPU)
     with torch.autocast(device):
         result = pipe(prompt)
     image = result.images[0]
@@ -104,3 +104,18 @@ def generate_scene(prompt: str) -> Image.Image:
     # Convert the warped image back to a PIL Image.
     warped_image_pil = Image.fromarray(warped_image)
     return warped_image_pil
+
+# ------------------------------------------------------------------------------
+# MAIN APP: Simple Test Interface
+# ------------------------------------------------------------------------------
+
+def main():
+    st.title("VR Storyteller: Generate a Pseudo-3D Scene")
+    prompt = st.text_input("Enter your scene description", "A futuristic city at sunset")
+    if st.button("Generate Scene"):
+        with st.spinner("Generating scene..."):
+            scene_img = generate_scene(prompt)
+        st.image(scene_img, caption="Generated Scene", use_column_width=True)
+
+if __name__ == "__main__":
+    main()
