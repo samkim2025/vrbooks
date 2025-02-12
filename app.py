@@ -57,8 +57,10 @@ def generate_scene(prompt: str) -> Image.Image:
       A PIL Image representing the "3D" scene.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pipe = load_sd_pipeline()
-    midas, transform = load_midas()
+    
+    with st.spinner("Loading AI models, please wait..."):
+        pipe = load_sd_pipeline()
+        midas, transform = load_midas()
 
     # Step 1: Generate a 2D image from the text prompt.
     # (Note: using autocast for performance on GPU)
